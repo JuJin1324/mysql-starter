@@ -9,4 +9,4 @@ lower_case_table_names  = 1
 transaction-isolation   = REPEATABLE-READ
 collation-server        = utf8mb4_general_ci
 character-set-server    = utf8mb4
-max_connections         = 512
+max_connections         = 32
