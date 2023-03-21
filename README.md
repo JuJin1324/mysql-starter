@@ -125,3 +125,98 @@
 
 ---
 
+## 사용자 및 권한
+### 사용자 식별
+> MySQL 은 사용자의 접속 지점(호스트 명이나 도메인 또는 IP 주소)도 계정의 일부가 된다.  
+> 'jujin'@'localhost' 와 'jujin'@`\192.168.0.12' 는 다른 계정이다.  
+> 모든 외부 컴퓨터에서 접속이 가능한 계정을 생성하기 위해서는 접속 지점에 % 를 명시하여 다음과 같은 형태로 계정을 생성한다: 'jujin'@'%'  
+> 만약 계정이 다음 2개가 존재하고  
+> 'jujin'@'localhost', 'jujin'@'%'  
+> localhost 에서 jujin 계정을 로그인을 시도하면 접속 지점의 범위가 작은 것을 항상 먼저 선택함으로 'jujin'@'localhost' 가 선택되며  
+> 두 계정의 패스워드가 다른 경우에 localhost 에서 'jujin'@'%' 의 패스워드를 통해서 접속하려하면 '비밀번호가 일치하지 않는다'라는 오류를 내며
+> 접속을 거부한다.
+
+### 사용자 계정 관리
+> MySQL 8.0 부터 계정은 `시스템 계정(System account)` 과 `일반 계정(Regular account)` 로 구분된다.  
+> 
+> **시스템 계정**  
+> 시스템 계정은 SYSTEM_USER 권한을 가진 계정이며 데이터베이스 서버 관리자를 위한 계정이다.  
+> 시스템 계정은 일반 계정을 관리(생성, 삭제, 변경)할 수 있지만 일반 계정은 시스템 계정을 관리할 수 없다.    
+> 계정 관리(계정 생성 및 삭제, 그리고 계정의 권한 부여 및 제거)가 가능하다.  
+> 다른 세션(Connection) 및 현재 세션에서 실행 중인 쿼리를 강제 종료가 가능하다.  
+>
+> **Account lock**
+> 계정 생성 시 또는 ALTER USER 명령을 사용해 계정을 사용하지 못하게 잠글지 여부를 결정한다.  
+> `ACCOUNT LOCK`: 계정을 사용하지 못하게 잠금  
+> `ACCOUNT UNLOCK`: 잠긴 계정을 다시 사용 가능 상태로 잠금 해제  
+> 
+> **Dual Password**  
+> 애플리케이션 서버에서 공용으로 DB 서버를 사용하기 때문에 애플리케이션에서 사용하는 계정 정보는 패스워드 변경이 힘들었다. 
+> 해당 계정의 패스워드를 변경하기 위해서는 계정을 사용하는 애플리케이션들을 모두 중단해야하기 때문이다.  
+> 그래서 MySQL 8.0 부터 나온 기능이 Dual Password 기능으로 하나의 계정에 대해 2개의 패스워드를 가지게 할 수 있다.  
+> 2개의 비밀번호는 primary 와 secondary 로 구분된다. 최근에 설정한 비밀번호가 primary 이며 old 비밀번호가 secondary 이다.  
+> dual password 를 사용하려면 패스워드 변경 구문의 마지막에 `RETAIN CURRENT PASSWORD` 옵션을 추가하면 된다.  
+> ```sql
+> ALTER USER 'root'@'localhost' IDENTIFIED BY 'new_password' RETAIN CURRENT PASSWORD;
+> ```
+> primary 패스워드와 secondary 패스워드 중 아무거나 패스워드를 입력하면 계정에 로그인이 되기 때문에 이전의 패스워드를 사용하는 애플리케이션들에
+> 영향이 가지 않는다. 하지만 결국 패스워드 변경 주기에 맞춰서 패스워드를 변경해야하는 상황이 또 온다.  
+> 계정 당 패스워드는 최대 2개씩만 가질 수 있음으로 `RETAIN CURRENT PASSWORD` 옵션을 통해서 패스워드를 변경하게 되면 primary 뿐만 아니라
+> secondary 패스워드도 같이 바뀌게 된다.  
+> 그럼으로 secondary 패스워드는 임시 패스워드라고 생각하고 변경 후 최대한 빨리 애플리케이션들의 커넥션 정보를 primary 패스워드로 변경 후 배포하고
+> secondary 패스워드는 보안을 위해서도 제거하는 것이 좋다. 다음은 secondary 패스워드를 제거하는 명령이다.  
+> ```sql
+> ALTER USER 'root'@'localhost' DISCARD OLD PASSWORD;
+> ```
+> 
+> **계정 쿼리 예시**  
+> 1.내부 접근만 허용하는 계정 생성: `CREATE USER '<username>'@'localhost' identified by '<password>';`  
+> 1-1.외부 접근을 허용하는 계정 생성: `CREATE USER '<username>'@'%' identified by '<password>';`  
+>
+> 2.계정 조회: `select user, host from mysql.user;`   
+> 
+> 3.계정 패스워드 변경(dual password 사용): `ALTER USER '<username>'@'<host>' IDENTIFIED BY '<new password>' RETAIN CURRENT PASSWORD;`  
+> 
+> 4.계정 삭제: `DROP USER '<username>'@'<host>';`
+
+### 권한(Privilege)
+> 권한은 글로벌 권한과 객체 권한으로 구분된다.  
+> 
+> **글로벌 권한**  
+> 글로벌 권한은 계정 및 시스템에 관한 권한이며, 객체 권한은 주로 데이터베이스 및 테이블에 관한 권한이다.  
+> 글로벌 권한은 특정 DB 나 테이블에 부여될 수 없기 때문에 글로벌 권한을 부여할 때 GRANT 명령의 ON 절에는 항상 `*.*` 를 사용한다.  
+> 
+> **권한 부여 명령어**  
+> `GRANT <권한> ON <DB 명>.<Table 명> TO '<username>'@'<host>';`  
+>
+> **DB 권한**  
+> DB 권한은 특정 DB 에 대해서만 권한을 부여하거나 서버에 존재하는 모든 DB 에 대해 권한을 부여할 수 있기 때문에 ON 절에 `*.*` 이나 
+> `<DB 명>.*` 을 사용한다.  
+> 
+> **테이블 권한**  
+> ```sql
+> GRANT SELECT, INSERT, UPDATE, DELETE ON *.* TO 'user'@'localhost';
+> GRANT SELECT, INSERT, UPDATE, DELETE ON employees.* TO 'user'@'localhost';
+> GRANT SELECT, INSERT, UPDATE, DELETE ON employees.department TO 'user'@'localhost';
+> ```
+> 테이블 권한은 첫 번째 예제와 같이 서버의 모든 DB 에 대해 권한을 부여하는 것도 가능하며, 두 번째 예제와 같이 특정 DB 의 오브젝트에 대해서만 권한을 부여하는 것도 가능하다.  
+> 그리고 세 번째 예제와 같이 특정 DB 의 특정 테이블에 대해서만 권한을 부여하는 것도 가능하다.  
+>
+> **칼럼 단위 권한**  
+> 칼럼 단위의 권한은 잘 사용하지 않으며 칼럼 단위 권한이 하나라도 설정되면 나머지 모든 테이블의 모든 칼럼에 대해서도 권한 체크를 하기 때문에 
+> 칼럼 하나에 대해서만 권한을 설정하더라도 전체적인 성능에 영향을 미칠 수 있다.  
+> 
+> **권한 쿼리 예시**  
+> 1.특정 DB 에 대한 CRUD 권한 부여: `GRANT SELECT, INSERT, UPDATE, DELETE ON <DB 명>.* TO '<username>'@'<host>';`  
+> 1-1.시스템 권한을 포함한 모든 권한 부여: `GRANT ALL PRIVILEGES ON *.* TO '<username>'@'<host>';`  
+> 
+> 2.권한 변경 후 적용: `FLUSH PRIVILEGES`  
+> 
+> 3.계정별 권한 조회: `SHOW GRANTS FOR '<username>'@'<host>';`      
+> 참고. 계정 조회: `select user, host from mysql.user;`  
+>
+> 4.모든 권한 삭제: `REVOKE ALL ON <DB 명>.<테이블 명> FROM <username>`  
+> 4-1.업데이트 권한 삭제: `REVOKE UPDATE ON <DB 명>.<테이블 명> FROM <username>`  
+
+### 역할(Role)
+> TODO
