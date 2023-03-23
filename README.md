@@ -219,4 +219,68 @@
 > 4-1.업데이트 권한 삭제: `REVOKE UPDATE ON <DB 명>.<테이블 명> FROM <username>`  
 
 ### 역할(Role)
-> TODO
+> MySQL 8.0 부터 권한들을 묶은 역할을 생성할 수 있다.  
+> 
+> **역할 생성**  
+> ```sql
+> CREATE ROLE <role 이름>, <role 이름>, ...;
+> ```
+> 역할 생성 시 뒤에 %'<hostname>' 붙여서 역할을 생성할 수도 있는데 사실 역할의 정체는 로그인 정보가 없는 계정이기 때문이다.  
+> 역할에 로그인 정보를 주어서 로그인이 가능해지는 경우 hostname 이 의미를 가지며 단순히 역할로 사용할 때는 hostname 의 의미가 없다.  
+> 그래서 역할 생성 시 hostname 을 주지 않으며, hostname 을 주지 않으면 hostname 이 '%' 로 자동으로 붙여진다.   
+>
+> **역할에 권한 부여**  
+> ```sql
+> GRANT <권한> ON <DB 명>.<Table 명> TO <역할 명>;
+> 
+> # 예시
+> GRANT SELECT ON employees.* TO role_emp_read;
+> GRANT INSERT, UPDATE, DELETE ON employees.* TO role_emp_write;
+> ```
+> 
+> **회원에 역할 부여**  
+> ```sql
+> GRANT <역할 명> TO '<username>'@'<hostname>';
+> 
+> # 예시 1: reader 와 writer 역할 권한을 부여
+> GRANT role_application_writer, role_application_reader TO 'app_writer'@'%';
+> 
+> # 예시 2: reader 역할 권한만 부여
+> GRANT role_application_reader TO 'app_reader'@'%';
+> ```
+> 
+> **역할 목록 확인**  
+> 역할은 회원과 동일하게 취급되기 때문에 mysql.user 테이블에 존재한다.  
+> 다만 회원과 다른 점은 역할은 대부분 host 가 '%' 로 되어있으며(회원처럼 % 가 아닌 다른 host 를 설정할 수 있긴 하다.) 역할을 통해서는 로그인할 수 없기 때문에
+> authentication_string 에는 빈 값이 들어가있다.(null 은 아니다.)
+> ```sql
+> SELECT user AS role_name
+> FROM mysql.user
+> WHERE host = '%'
+> AND LENGTH(authentication_string);
+> 
+> # 혹은 역할 계정임을 나타내는 'role_' prefix 를 사용자가 임의로 넣어서 역할 계정을 관리하는 경우
+> SELECT user AS role_name
+> FROM mysql.user
+> WHERE user like 'role_%' 
+> ```
+> MySQL 에서는 역할과 계정을 구분하지 않는다. 그래서 역할을 계정으로 변경시켜서 계정으로 사용할 수도 있다.  
+> 역할과 계정을 구분하기 위해서는 사용자가 역할의 이름 앞에 'role_' 과 같이 prefix 혹은 뒤에 '_role' 과 같이 postfix 를 사용하여 해당 계정이
+> 역할 계정임을 나타내는 것을 권장한다.
+> 
+> **역할 활성화**  
+> 역할은 부여(GRANT) 만 한다고 역할의 권한 기능을 바로 사용할 수 없다.  
+> 역할에 부여된 권한을 사용자가 사용하기 위해서는 연결된 세션(connection) 에서 `SET ROLE '<역할 명>'` 을 통해서 역할을 활성화 해주어야한다.  
+> 연결된 세션 마다 해주어야하기 때문에 불편하고 수동적이다.  
+> 이를 연결 시 자동으로 역할을 활성화해주는 옵션을 셋팅하면 해결 가능하다.  
+> ```sql 
+> SET GLOBAL activate_all_roles_on_login = ON;
+> ```   
+> 
+> **회원에 부여된 역할 제거**  
+> ```sql
+> REVOKE <역할 명> from '<username>'@'<hostname>';
+> 
+> # 예시
+> REVOKE role_app_writer from 'app_writer'@'%'; 
+> ```
