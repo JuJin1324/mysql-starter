@@ -10,7 +10,7 @@
 > mysql 5.x  
 > `brew install mysql@5.x`  
 >
-> mysql 8.x
+> mysql 8.0
 > `brew install mysql`  
 > 
 > mysql service 시작  
@@ -30,10 +30,10 @@
 > `mysql --version`
 
 ### docker
-> mysql 5.x  
+> mysql 5.7  
 > `docker run -d -p 3306:3306 --name starter-mysql mysql:5.7`
 > 
-> mysql 8.x  
+> mysql 8.0  
 > `docker run -d -p 3306:3306 --name starter-mysql mysql:8.0`
 >
 > version 확인  
@@ -119,6 +119,7 @@
 >   ('max_connections', 'innodb_sort_buffer_size', 'innodb_log_files_in_group', 'innodb_log_file_size',
 >   'innodb_buffer_pool_size', 'innodb_buffer_pool_instances', 'innodb_io_capacity',
 >   'innodb_io_capacity_max', 'autocommit', 'default_storage_engine', 'lower_case_table_names',
+>   'innodb_table_locks', 'innodb_deadlock_detect', 'innodb_lock_wait_timeout',
 >   'transaction_isolation', 'collation_server', 'character_set_server', 'character_set_filesystem',
 >   'system_time_zone');
 > ```
@@ -306,4 +307,44 @@
 > ```sql
 > show global variables where variable_name like 'innodb_%_io_threads';
 > ```
+
+### 실행 엔진과 핸들러
+> **실행 엔진**  
+> 실행 엔진은 만들어진 계획대로 각 핸들러에게 요청해서 받은 결과를 또 다른 핸틀러 요청의 입력으로 연결하는 역할을 수행한다.  
+> 
+> **핸들러(스토리지 엔진)**  
+> MySQL 실행 엔진의 요청에 따라 데이터를 디스크로 저장하고 디스크로부터 읽어오는 역할을 담당한다.  
+
+### 쿼리 캐시
+> MySQL 8.0 버전으로 오면서 쿼리 캐시의 기능이 사라졌다.  
+
+### InnoDB 스토리지 엔진 아키텍처
+> InnoDB 는 MySQL 에서 사용할 수 있는 스토리지 엔징 중 거의 유일하게 레코드 기반의 잠금을 제공하며, 그 때문에 높은 동시성 처리가 가능하고 안정적이며 성능이 뛰어나다.    
+> InnoDB 의 모든 테이블은 기본적으로 프라이머리 키를 기준으로 클러스터링되어 저장된다. 즉, 프라이머리 키 값의 순서대로 디스크에 저장된다는 뜻이며, 모든 세컨더리 인덱스는 
+> 레코드의 주소 대신 프라이머리 키의 값을 논리적인 주소로 사용한다.
+
+### MVCC
+> MVCC 의 가장 큰 목적은 잠금을 사용하지 않는 일관된 읽기를 제공하는 데 있다. InnoDB 는 언두 로그(Undo log)를 이용해 이 기능을 구현한다.
+> 여기서 멀티 버전이라 함은 하나의 레코드에 대해 여러 개의 버전이 동시에 관리된다는 의미이다.    
+> 하나의 트랜잭션에서 Update 쿼리가 실행되면 InnoDB 버퍼 풀에 있는 레코드가 갱신되며 레코드의 업데이트 이전의 내용은 언두 로그에 기록된다.  
+> 다른 트랜잭션에서 동일 레코드를 조회 시에 READ_UNCOMMITTED 이면 InnoDB 버퍼 풀에 있는 레코드를 읽게 되며 그 외에 
+> READ_COMMITTED, REPEATABLE_READ, SERIALIZABLE 의 경우에는 언두 로그에 기록된 레코드를 읽게 된다.  
+
+### 자동 데드락 감지
+> InnoDB 스토리지 엔진은 내부적으로 잠금이 교착 상태에 빠지지 않았는지 체크하기 위해 잠금 대기 목록을 그래프 형태로 관리한다.  
+> InnoDB 스토리지 엔진은 데드락 감지 스레드를 가지고 있어서 데드락 감지 스레드가 주기적으로 잠금 대기 그래프를 검사해 교착 상태에 빠진 트랜잭션들을 찾아서
+> 그중 하나를 강제 종료한다. 
+> 
+> InnoDB 스토리지 엔진은 상위 레이어인 MySQL 엔진에서 관리되는 테이블 잠금은 볼 수가 없어서 데드락 감지가 불확실할 수 도 있는데, `innodb_table_locks`
+> 시스템 변수를 활성화하면 InnoDB 스토리지 엔진 내부의 레코드 잠금뿐만 아니라 테이블 레벨의 잠금까지 감지할 수 있게 된다. 특별한 이유가 없다면 `innodb_table_locks`
+> 시스템 변수를 활성화하자.
+> 
+> 일반적인 서비스에서는 데드락 감지 스레드가 트랜잭션의 잠금 목록을 검사해서 데드락을 찾아내는 작업은 크게 부담되지 않는다.
+> 하지만 동시 처리 스레드가 매우 많아지거나 각 트랜잭션이 가진 잠금의 개수가 많아지면 데드락 감지 스레드가 느려진다. 
+> 이런 문제점을 해결하기 위해 MySQL 서버는 `innodb_deadlock_detect` 시스템 변수를 제공하며, OFF 설정 시 데드락 감지 스레드는 더이상 작동되지 않게 된다.
+> 데드락 감지 스레드가 작동하지 않으면 InnoDB 스토리지 엔진 내부에서 2개 이상의 트랜잭션이 상대방이 가진 잠금을 요구하는 상황이 발생해도 누군가가 중재를
+> 하지 않기 때문에 무한정 대기하게 될 것이다. 
+> 하지만 `innodb_lock_wait_timeout` 시스템 변수를 활성화하면 이런 데드락 상황에서 일정 시간이 지나면 자동으로 요청이 실패하고 에러 메시지를 반환하게 된다.  
+> `innodb_lock_wait_timeout` 은 초 단위로 설정할 수 있으며, `innodb_deadlock_detect` 를 OFF 로 설정해서 비활성화하는 경우라면 `innodb_lock_wait_timeout`을
+> 기본값인 50초보다 훨씬 낮은 시간으로 변경해서 사용할 것을 권장한다.  
 
