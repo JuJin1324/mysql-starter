@@ -116,8 +116,8 @@
 > 시스템 변수 필터링해서 확인  
 > ```sql
 > show variables where variable_name in
->   ('max_connections', 'innodb_sort_buffer_size', 'innodb_log_files_in_group', 'innodb_log_file_size',
->   'innodb_buffer_pool_size', 'innodb_buffer_pool_instances', 'innodb_io_capacity',
+>   ('max_connections', 'innodb_sort_buffer_size', 'innodb_redo_log_capacity', 'innodb_log_buffer_size',
+>   'innodb_buffer_pool_size', 'innodb_buffer_pool_instances', 'innodb_page_cleaners', 'innodb_io_capacity',
 >   'innodb_io_capacity_max', 'autocommit', 'default_storage_engine', 'lower_case_table_names',
 >   'innodb_table_locks', 'innodb_deadlock_detect', 'innodb_lock_wait_timeout',
 >   'transaction_isolation', 'collation_server', 'character_set_server', 'character_set_filesystem',
@@ -132,7 +132,7 @@
 > 'jujin'@'localhost' 와 'jujin'@`\192.168.0.12' 는 다른 계정이다.  
 > 모든 외부 컴퓨터에서 접속이 가능한 계정을 생성하기 위해서는 접속 지점에 % 를 명시하여 다음과 같은 형태로 계정을 생성한다: 'jujin'@'%'  
 > 만약 계정이 다음 2개가 존재하고  
-> 'jujin'@'localhost', 'jujin'@'%'  
+> 'jujin'@'localhost', 'jujin'@'%'  ㅂ
 > localhost 에서 jujin 계정을 로그인을 시도하면 접속 지점의 범위가 작은 것을 항상 먼저 선택함으로 'jujin'@'localhost' 가 선택되며  
 > 두 계정의 패스워드가 다른 경우에 localhost 에서 'jujin'@'%' 의 패스워드를 통해서 접속하려하면 '비밀번호가 일치하지 않는다'라는 오류를 내며
 > 접속을 거부한다.
@@ -348,3 +348,55 @@
 > `innodb_lock_wait_timeout` 은 초 단위로 설정할 수 있으며, `innodb_deadlock_detect` 를 OFF 로 설정해서 비활성화하는 경우라면 `innodb_lock_wait_timeout`을
 > 기본값인 50초보다 훨씬 낮은 시간으로 변경해서 사용할 것을 권장한다.  
 
+### InnoDB 버퍼풀
+> InnoDB 스토리지 엔진에서 가장 핵심적인 부분으로, 디스크의 데이터 파일이나 인덱스 정보를 메모리에 캐시해 두는 공간이다.  
+> MySQL 5.7 버전 이후로는 InnoDB 버퍼 풀의 크기를 동적으로 조절할 수 있게 개선됐다.  
+> 처음으로 MySQL 서버를 준비한다면 다음과 같은 방법으로 InnoDB 버퍼 풀 설정을 찾아가는 방법을 권장한다.  
+> 전체 메모리 공간이 8GB 미만이라면 50% 정도인 4GB 만 InnoDB 버퍼 풀로 설정하고 나머지 메모리 공간은 MySQL 서버와 운영체제, 
+> 그리고 다른 프로그램이 사용할 수 있는 공간으로 확보해주는 것이 좋다.  
+> 전제 메모리 공간이 8GB 이상이라면 InnoDB 버퍼 풀의 크기를 전체 메모리의 50% 에서 시작해서 조금씩 올려가면서 최적점을 찾는다.  
+>
+> 버퍼 풀 크기 확인 쿼리
+> ```sql
+> show variables where variable_name in ('innodb_buffer_pool_size', 'innodb_buffer_pool_instances');
+> ```
+> 
+> InnoDB 버퍼 풀의 크기는 동적으로 변경할 수 있지만 버퍼 풀의 변경은 크리티컬한 변경이므로 가능하면 MySQL 서버가 한가한 시점을 골라서 진행하는 것이 좋다.  
+> 또한 버퍼 풀을 더 크게 변경하는 작업은 시스템 영향도가 크지 않지만, 버퍼 풀의 크기를 줄이는 작업은 서비스 영향도가 매우 크므로 가능하면 버퍼 풀의 크기를 줄이는 
+> 작업은 하지 않도록 주의하자.  
+> 
+> InnoDB 버퍼 풀은 전통적으로 버퍼 풀 전체를 관리하는 잠금(세마포어)으로 인해 내부 잠금 경합을 많이 유발해왔는데, 이런 경합을 줄이기 위해
+> 버퍼 풀을 여러 개로 쪼개어 관리할 수 있게 개선됐다.  
+> `innodb_buffer_pool_instances` 시스템 변수를 이용해 버퍼 풀을 여러 개로 분리해서 관리할 수 있는데, 각 버퍼 풀을 버퍼 풀 인스턴스라고 표현한다.  
+> 기본적으로 버퍼 풀 인스턴스의 개수는 8개로 초기화되지만 전체 버퍼 풀을 위한 메모리 크기가 1GB 미만이면 버퍼풀 인스턴스는 1개만 생성된다.  
+> 버퍼 풀로 할당할 수 있는 메모리 공간이 40GB 이하 수준이라면 기본 값인 8을 유지하고, 메모리가 크다면 버퍼 풀 인스턴스랑 5GB 정도가 되게 인스턴스 개수를 설정하는 것이 좋다.  
+
+### 버퍼 풀과 리두 로그
+> 버퍼 풀은 서버의 성능 향상을 위한 데이터 캐시 및 쓰기가 필요한 레코드들을 모아 한꺼번에 디스크에 적용하는 쓰기 버퍼링 두가지를 제공한다.  
+> InnoDB 의 버퍼 풀은 디스크에서 읽은 상태로 전혀 변경되지 않은 클린 페이지와 함께 INSERT, UPDATE, DELETE 명령으로 변경된 데이터를 가진 더티 페이지(Dirty Page)도 가지고 있다.  
+> 
+> InnoDB 스토리지 엔진은 주기적으로 체크포인트 이벤트를 발생시켜 리두 로그와 버퍼 풀의 더티 페이지를 디스크로 동기화한다.
+> 리두 로그의 공간이 모두 차게되면 체크포인트 이벤트가 발생한다.  
+> 
+> 리두 로그 파일 사이즈 확인 쿼리  
+> ```sql
+> show variables where variable_name in ('innodb_redo_log_capacity');
+> ```
+> Mysql 공식문서를 보면 리두 로그 파일을 버퍼풀 크기만큼 크게 만들라고 한다.  
+> redo 로그 파일을 버퍼 풀만큼 크게 만듭니다.  
+> InnoDB가 redo 로그 파일을 가득 채운 경우, 버퍼 풀의 수정된 내용을 체크포인트에서 디스크에 기록해야 합니다.  
+> redo 로그 파일이 작을 경우 불필요한 디스크 쓰기가 많이 발생합니다.  
+> 과거에는 대규모 redo 로그 파일이 복구 시간을 오래 끌었지만 이제는 복구 속도가 훨씬 빨라져 대용량 redo 로그 파일을 안심하고 사용할 수 있습니다.  
+> 
+> 로그 버퍼는 는 디스크의 리두 로그파일에 기록될 데이터를 보유하는 메모리 영역이다.  
+> 로그 버퍼의 크기는 innodb_log_buffer_size 변수로 설정할수 있다. (일반적으로 4MB ~ 16MB 가 좋은 크기라고 한다)  
+> 로그 버퍼크기를 크게 조정하면 트랜잭션을 커밋 하기 전에 디스크에 로그를 쓰지않아도 큰 트랜잭션을 실행할수 있다.  
+> 많은 행을 업데이트, 삽입, 삭제하는 트랜잭션이 있는 경우 로그버퍼를 크게조정하면 DISK I/O 가 절약된다.  
+> ```sql
+> show variables where variable_name in ('innodb_log_buffer_size');
+> ```
+> 
+> `innodb_page_cleaners` 는 `innodb_buffer_pool_instances` 와 갯수를 맞춘다.  
+
+### 참조사이트
+> [Mysql Redo Log 란](https://dus815.tistory.com/entry/Mysql-Redo-Log-란)
