@@ -22,9 +22,6 @@ innodb_buffer_pool_size = 1G
 innodb_buffer_pool_instances = 1
 innodb_page_cleaners = 1
 
-innodb_io_capacity = 100
-innodb_io_capacity_max = 400
-
 ### For Production
 #max_connections = 512
 
@@ -37,6 +34,3 @@ innodb_io_capacity_max = 400
 ## innodb_buffer_pool_instances = innodb_page_cleaners
 #innodb_buffer_pool_instances = 8
 #innodb_page_cleaners = 8
-
-#innodb_io_capacity = 200
-#innodb_io_capacity_max = 1000

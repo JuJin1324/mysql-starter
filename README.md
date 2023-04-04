@@ -380,7 +380,7 @@
 > 
 > 리두 로그 파일 사이즈 확인 쿼리  
 > ```sql
-> show variables where variable_name in ('innodb_redo_log_capacity');
+> show variables where variable_name = 'innodb_redo_log_capacity';
 > ```
 > Mysql 공식문서를 보면 리두 로그 파일을 버퍼풀 크기만큼 크게 만들라고 한다.  
 > redo 로그 파일을 버퍼 풀만큼 크게 만듭니다.  
@@ -393,10 +393,63 @@
 > 로그 버퍼크기를 크게 조정하면 트랜잭션을 커밋 하기 전에 디스크에 로그를 쓰지않아도 큰 트랜잭션을 실행할수 있다.  
 > 많은 행을 업데이트, 삽입, 삭제하는 트랜잭션이 있는 경우 로그버퍼를 크게조정하면 DISK I/O 가 절약된다.  
 > ```sql
-> show variables where variable_name in ('innodb_log_buffer_size');
+> show variables where variable_name = 'innodb_log_buffer_size';
 > ```
 > 
 > `innodb_page_cleaners` 는 `innodb_buffer_pool_instances` 와 갯수를 맞춘다.  
+> 
+> `innodb_io_capacity`, `innodb_io_capacity_max` 는 InnoDB 버퍼풀이 디스크를 읽고 쓰는 경우 속도를 의미한다. 디스크 IOPS 속도이며,
+> 적절한 값은 운영을 통해서 알아가야하며, 디폴트는 각각 200, 2000 이다.
 
 ### 참조사이트
 > [Mysql Redo Log 란](https://dus815.tistory.com/entry/Mysql-Redo-Log-란)
+
+### 어댑티브 해시 인덱스
+> 어댑티브 해시 인덱스는 InnoDB 스토리지 엔진에서 사용자가 자주 요청하는 데이터에 대해 자동으로 생성하는 인덱스이며,
+> `innodb_adaptive_hash_index` 시스템 변수를 이용해서 활성화하거나 비활성화 할 수 있다.  
+> 
+> 어댑티브 해시 인덱스는 해시 기능을 통해서 B-Tree 인덱싱보다 좋은 성능 및 CPU 사용률을 줄여준다.   
+> 
+> 어댑티브 해시 인덱스는 InnoDB 버퍼풀(RAM 메모리)에 있는 데이터에 대해서만 인덱스를 생성하기 때문에 디스크 읽기가 많은 경우 등 상황에서 효용이 없을 수 있다.  
+> MySQL 서버의 기본 설정은 어댑티브 해시 인덱스를 사용하도록 되어 있다.  
+> 
+> 어댑티브 해시 인덱스는 테이블의 삭제 및 스키마 수정 작업에 많은 영향을 미친다. 테이블의 삭제/변경 따라 인덱스의 삭제/변경 해야하기 때문이다.  
+> 따라서 어댑티브 해시 인덱스가 `ALGORITHM=INSTANT` 를 사용해서 Online DDL 을 사용하는 경우에 상당한 시간을 소요시킬 수 있다.  
+> 
+> ```sql
+> SHOW ENGINE INNODB STATUS \G
+> ...
+> -------------------------------------
+> INSERT BUFFER AND ADAPTIVE HASH INDEX
+> -------------------------------------
+> ...
+> 1.03 hash searches/s, 2.64 non-hash searches/s
+> ```
+> 위의 쿼리로 조회 쿼리 사용시 어댑티브 해시 인덱스 사용률을 알 수 있다. 여기서는 총 3.67(1.03 + 2.64) 중 1.03 번의 해시 인덱스 사용으로
+> 28% 의 사용률을 알 수 있다.  
+> 이 서버의 CPU 사용량이 100% 라는 가정하에 28% 의 인덱스 사용률을 보였다면 사용하는 것이 좋지만, CPU 사용량이 높지 않은 상태에서 28% 라면
+> 어댑티브 해시 인덱스를 비활성화하는 편이 나을 수 있다.  
+
+### 기타 엔진
+> Memory 스토리지 엔진은 테이블 수준의 락만 지원하기 때문에 동시 처리에서 InnoDB 엔진보다 성능이 좋지 않다.  
+> Memory 스토리지 엔진과 MyISAM 스토리지 엔진의 경우 하위 호환성을 위해서 유지하는 것으로 보이며 InnoDB 와 비교해서 장점이 없다.  
+> 그래서 차후 버전에서는 제거될 것으로 예상된다.  
+
+### 제너럴 쿼리 로그 파일
+> MySQL 서버에서 실행된 쿼리 목록을 저장한 로그 파일  
+> 로그 파일 위치 확인
+> ```sql
+> show variables where variable_name = 'general_log_file';
+> ```
+
+### 슬로우 쿼리 로그
+> `long_query_time` 시스템 변수에 설정한 초 이상의 시간이 걸린 쿼리를 저장하는 로그  
+> 반드시 쿼리가 정상적으로 실행이 완료되어야 기록된다.  
+>
+> ```sql
+> # 슬로우 쿼리 임계 시간 확인(초)
+> show variables where variable_name = 'long_query_time';
+>
+> # 슬로우 쿼리 로그 파일 위치 확인
+> show variables where variable_name = 'slow_query_log_file';
+> ```
