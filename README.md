@@ -453,3 +453,23 @@
 > # 슬로우 쿼리 로그 파일 위치 확인
 > show variables where variable_name = 'slow_query_log_file';
 > ```
+
+---
+
+## Lock
+### 메타데이터(metadata) 락
+> 데이터베이스 객체(테이블이나 뷰 등)의 이름이나 구조를 변경하는 경우에 자동으로 획득되는 잠금이다. 메타데이터 락은 명시적으로 획득하거나 해제할 수 있는 것이 아니다.
+
+### ALGORITHM=INSTANT
+> 기존 테이블의 구조 변경 작업 중에는 메타데이터 락 및 테이블 락이 걸려서 해당 테이블의 구조의 변경이 완료되기 전까지는 데이터가 INSERT 되지않았다.   
+> 하지만 테이블 변경 쿼리 뒤에 `,ALGORITHM=INSTANT` 를 붙이면 메타데이터 락 및 테이블 락 없이 테이블 구조의 변경이 진행되기 때문에 데이터 조회 및 INSERT 에 문제가 없다.    
+> 
+> 현재 ALGORITHM=INSTANT 이 지원하는 기능은 다음과 같다.  
+> 1.테이블 RENAME  
+> 2.칼럼의 Default 값 설정/삭제/변경  
+> 3.ENUM, SET 타입에 값 추가  
+> 4.신규 칼럼 추가(Default 값이 있어도 관계 없음)
+>
+> **참조사이트**  
+> [MySQL 8.0.12 Online DDL 방식 추가 (INSTANT Algorithm)](https://m.blog.naver.com/seuis398/221375024684)  
+> [MySQL/MariaDB, 테이블 락 최소화하여 변경하기](https://jsonobject.tistory.com/515)  
