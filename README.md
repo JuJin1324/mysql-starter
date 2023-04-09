@@ -473,3 +473,84 @@
 > **참조사이트**  
 > [MySQL 8.0.12 Online DDL 방식 추가 (INSTANT Algorithm)](https://m.blog.naver.com/seuis398/221375024684)  
 > [MySQL/MariaDB, 테이블 락 최소화하여 변경하기](https://jsonobject.tistory.com/515)  
+
+### 레코드 락(Record lock)
+> 레코드 자체만을 잠그는 것을 레코드 락이라고 한다.  
+> InnoDB 스토리지 엔진은 레코드 자체가 아니라 인덱스의 레코드를 잠근다는 특징이 있다.  
+> InnoDB 에서는 보조 인덱스를 이용한 변경 작업은 넥스트 키락 또는 갭 락을 사용한다.  
+> 키 또는 유니크 인덱스에 의한 변경 작업에서는 갭 락에 대해서는 잠그지 않고 레코드 자체에 대해서만 락을 건다.  
+> 
+> UPDATE 시 조건에 사용되는 컬럼 중에 인덱스가 걸린 컬럼이 있으면 해당 컬럼의 값에 해당하는 레코드는 모두 락이 걸린다.  
+> 예를 들어 `update employee set hire_date=now() where first_name='jujin' and last_name='robert';` 쿼리문을 가정하자.  
+> first_name 칼럼에는 인덱스가 걸려있으며 first_name='jujin' 에 해당하는 레코드가 30개라고 가정하자.  
+> last_name 칼럼에는 인덱스가 걸려있지 않다.  
+> first_name='jujin' and last_name='robert' 에 해당하는 레코드는 1개라고 가정하자.  
+> 그럼 위의 update 쿼리를 실행한 경우 first_name='jujin' and last_name='robert' 에 해당하는 레코드는 1개이기 때문에 해당 레코드만 락이 걸릴거 같다.  
+> 하지만 first_name 에만 인덱스가 걸려있기 때문에 MySQL 은 first_name='jujin' 에 해당하는 레코드 30개를 모두 레코드 락을 건다.   
+> 그리고 update 쿼리를 실행이 완료되면 30개의 레코드 락이 해제된다.
+> 만약 employee 테이블에 인덱스가 하나도 없다면 테이블을 풀스캔하면서 update 작업을 하는데, 이 과정에서 테이블에 있는 모든 레코드를 잠그게 된다.  
+> 이것이 MySQL 의 방식이며, MySQL 의 InnoDB 에서 인덱스 설계가 중요한 이유 또한 이것이다.  
+> 왠만하면 겹치는 것이 없는 클러스터드 인덱스(PK) 를 사용하여 업데이트 하는 것이 Best 일 듯 싶다.  
+> 혹은 보조 인덱스를 사용하더라도 대체키가 될 만한 컬럼의 보조인덱스를 사용해서 update 하는 것이 차선일 듯 싶다.  
+
+### 갭 락(Gap lock)
+> 갭 락은 레코드 자체가 아니라 레코드와 바로 인접한 레코드 사이의 간격만을 잠그는 것을 의미한다.  
+> 갭 락의 역할은 레코드와 레코드 사이의 간격에 새로운 레코드가 생성(INSERT)되는 것을 제어하는 것이다.  
+> 갭 락은 그 자체보다는 넥스트 키 락의 일부로 자주 사용된다.  
+
+### 넥스트 키 락(Next key lock)
+> InnoDB 의 갭 락이나 넥스트 키 락은 바이너리 로그에 기록되는 쿼리가 레플리카 서버에서 실행될 때 소스 서버에서 만들어 낸 결과와 동일한 결과를 만들어내도록 보장하는 것이 주목적이다.
+> 그런데 의외로 넥스트 키 락과 갭 락으로 인해 데드락이 발생하거나 다른 트랜잭션을 기다리게 만드는 일이 자주 발생한다.  
+> 가능하다면 바이너리 로그 포맷을 ROW 형태로 바꿔서 넥스트 키 락이나 갭락을 줄이는 것이 좋다.  
+> 
+> 바이너리 로그 포맷 확인 쿼리: `SELECT @@binlog_format;`  
+> 바이너리 로그 포맷 설정: my.cnf 
+> ```
+> [mysqld]
+> ...
+> binlog_format=2   # binlog 포맷(0: MIXED, 1:STATEMENT, 2:ROW)
+> ```
+
+### 자동 증가 락(Auto increment lock)
+> MySQL 에서는 자동 증가하는 숫자 값을 추출하기 위해 AUTO_INCREMENT 라는 칼럼 속성을 제공한다.  
+> AUTO_INCREMENT 칼럼이 사용된 테이블에 동시에 여러 레코드가 INSERT 되는 경우, 저장되는 각 레코드는 중복되지 않고 저장된 순서대로 증가하는 일련번호 값을 가져아한다.  
+> 이를 위해 InnoDB 스토리지 엔진에서는 내부적으로 AUTO_INCREMENT 락이라고 하는 테이블 수준의 잠금을 사용한다.  
+> AUTO_INCREMENT 락은 INSERT, REPLACE 와 같이 새로운 레코드를 저장하는 쿼리에서만 동작한다.  
+> AUTO_INCREMENT 락은 트랜잭션과 관계없이 AUTO_INCREMENT 값을 가져오는 순간만 락이 걸렸다가 즉시 해제된다.  
+> 
+> MySQL 5.1 이상부터는 `innodb_autoinc_lock_mode` 시스템 변수를 이용해 자동 증가 락의 작동 방식을 변경할 수 있다.  
+> 자동 증가 락 모드 확인 쿼리: `show variables where variable_name = 'innodb_autoinc_lock_mode';`  
+> 
+> **innodb_autoinc_lock_mode=0**  
+> MySQL 5.0 과 동일한 잠금 방식으로 모든 INSERT 문장은 자동 증가 락을 사용한다.  
+> 
+> **innodb_autoinc_lock_mode=1**  
+> 단순히 한 건 또는 여러 건의 레코드를 INSERT 하는 SQL 중 MySQL 서버가 INSERT 되는 레코드 건수를 정확히 예측할 수 있을 때는 자동 증가 락을 
+> 사용하지 않고, 훨씬 가볍고 빠른 래치(뮤택스)를 이용해 처리한다.  
+> 개선된 래치는 자동 증가 락과 달리 아주 짧은 시간 동안만 잠금을 걸고 필요한 자동 증가 값을 가져오면 즉시 잠금이 해제된다.  
+> 하지만 INSERT ... SELECT 와 같이 MySQL 서버가 쿼리를 실행하기 전에 건수를 예측할 수 없을 때는 MySQL 5.0 에서와 같이 자동 증가 락을 사용한다.  
+> 
+> **innodb_autoinc_lock_mode=2**  
+> 절대 자동 증가 락을 걸지 않고 경량화된 래치(뮤택스)를 사용한다. 이 설정에서는 하나의 INSERT 문장으로 INSERT 되는 레코드라고 하더라도 연속된 자동 증가
+> 값을 보장하지는 않는다.   
+> 이 설정 모드에서는 INSERT ... SELECT 와 같은 대량 INSERT 문장이 실행되는 중에도 다른 커넥션에서 INSERT 를 수행할 수 있으므로 동시 처리 성능이
+> 높아진다. 하지만 이 설정에서 작동하는 자동 증가 기능은 유니크한 값이 생성된다는 것만 보장한다.  
+> STATEMENT 포맷의 바이너리 로그를 사용하는 복제에서는 소스 서버와 레플리카 서버의 자동 증가 값이 달라질 수도 있기 때문에 STATEMENT 포맷의 바이너리
+> 로그를 사용한다면 innodb_autoinc_lock_mode=1 로 변경해서 사용할 것을 권장한다.  
+> innodb_autoinc_lock_mode=2 는 바이너리 로그 포맷이 ROW 인 경우에만 사용을 권장한다.   
+
+### 트랜잭션 격리 수준
+> READ COMMITTED 격리 수준에서는 트랜잭션 내에서 실행되는 SELECT 문장과 트랜잭션 외부에서 실행되는 SELECT 문장의 차이가 별로 없다.  
+> 하지만 REPEATABLE READ 격리 수준에서는 기본적으로 SELECT 쿼리 문장도 트랜잭션 범위 내에서만 작동한다. 즉, START TRANSACTION 명령으로 
+> 트랜잭션을 시작한 상태에서 온종일 동일한 쿼리를 반복해서 실행해봐도 동일한 결과만 보게 된다.  
+
+### MySQL 의 기본 트랜잭션 격리 수준
+> REPEATABLE READ 는 MySQL 의 InnoDB 스토리지 엔진에서 기본으로 사용되는 격리 수준이다. 
+> 바이너리 로그를 가진 MySQL 서버에서는 최소 REPEATABLE READ 격리 수준 이상을 사용해야 한다.  
+> InnoDB 스토리지 엔진은 트랜잭션이 ROLLBACK 될 가능성에 대비해 변경되기 전 레코드를 언두(Undo) 공간에 백업해두고 실제 레코드 값을 변경한다. 
+> 이러한 변경 방식을 MVCC 라고 한다.  
+>
+> 한 사용자가 BEGIN 으로 트랜잭션을 시작하고 장시간 트랜잭션을 종려하지 않으면 언두 영역이 백업된 데이터로 무한정 커질 수도 있다. 
+> 이렇게 언두에 백업된 레코드가 많아지면 MySQL 서버의 처리 성능이 떨어질 수 있다.  
+>
+> InnoDB 스토리지 엔진에서는 갭 락과 넥스트 키 락 덕분에 REPEATABLE READ 격리 수준에서도 PHANTOM READ 가 발생하지 않는다.  
