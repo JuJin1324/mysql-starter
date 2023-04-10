@@ -10,7 +10,7 @@
 > mysql 5.x  
 > `brew install mysql@5.x`  
 >
-> mysql 8.0
+> mysql 8.0  
 > `brew install mysql`  
 > 
 > mysql service 시작  
@@ -129,11 +129,11 @@
 ## 사용자 및 권한
 ### 사용자 식별
 > MySQL 은 사용자의 접속 지점(호스트 명이나 도메인 또는 IP 주소)도 계정의 일부가 된다.  
-> 'jujin'@'localhost' 와 'jujin'@`\192.168.0.12' 는 다른 계정이다.  
+> 'jujin'@'localhost' 와 'jujin'@'192.168.0.12' 는 다른 계정이다.  
 > 모든 외부 컴퓨터에서 접속이 가능한 계정을 생성하기 위해서는 접속 지점에 % 를 명시하여 다음과 같은 형태로 계정을 생성한다: 'jujin'@'%'  
 > 만약 계정이 다음 2개가 존재하고  
-> 'jujin'@'localhost', 'jujin'@'%'  ㅂ
-> localhost 에서 jujin 계정을 로그인을 시도하면 접속 지점의 범위가 작은 것을 항상 먼저 선택함으로 'jujin'@'localhost' 가 선택되며  
+> 'jujin'@'localhost', 'jujin'@'%'  
+> localhost 에서 jujin 계정을 로그인을 시도하면 접속 지점의 범위가 작은 것을 항상 먼저 선택함으로 'jujin'@'localhost' 가 선택되며 
 > 두 계정의 패스워드가 다른 경우에 localhost 에서 'jujin'@'%' 의 패스워드를 통해서 접속하려하면 '비밀번호가 일치하지 않는다'라는 오류를 내며
 > 접속을 거부한다.
 
@@ -217,7 +217,7 @@
 > 참고. 계정 조회: `select user, host from mysql.user;`  
 >
 > 4.모든 권한 삭제: `REVOKE ALL ON <DB 명>.<테이블 명> FROM <username>`  
-> 4-1.업데이트 권한 삭제: `REVOKE UPDATE ON <DB 명>.<테이블 명> FROM <username>`  
+> 4-1.업데이트 권한 삭제: `REVOKE UPDATE ON <DB 명>.<테이블 명> FROM <username>`
 
 ### 역할(Role)
 > MySQL 8.0 부터 권한들을 묶은 역할을 생성할 수 있다.  
@@ -286,6 +286,56 @@
 > REVOKE role_app_writer from 'app_writer'@'%'; 
 > ```
 
+### 회원 및 역할 생성 및 배정
+> 계정 생성 시 특정 IP 는 회사 사무실 IP 혹은 AWS 사용 시 Bastion host IP 로 설정하는 것이 좋다.  
+> 하지만 Bastion host 의 IP 로 설정 시에는 Bastion host 의 IP 가 변하지 않는 경우에만 하도록 주의하자.  
+> 
+> **개발자**  
+> ```sql
+> # 계정 생성
+> CREATE USER '<개발자 아이디>'@'<특정 IP>' identified by '<password>';
+> 
+> # 역할 생성
+> CREATE ROLE ROLE_DEV;
+> 
+> # 권한 부여: 특정 DB 는 조회만 허용, information_schema 는 조회만 허용
+> GRANT SELECT ON <db 명>.* TO ROLE_DEV;
+> GRANT SELECT ON information_schema.* TO ROLE_DEV; 
+> 
+> # 역할 부여
+> GRANT ROLE_DEVELOPER TO '<개발자 아이디>'@'%';
+> ```
+> 
+> **DBA**  
+> ```sql
+> # 계정 생성
+> CREATE USER '<DB 관리자 아이디>'@'%' identified by '<password>';
+> 
+> # 역할 생성
+> CREATE ROLE ROLE_DB_ADMIN;
+> 
+> # 권한 부여: 모든 권한 허용
+> GRANT ALL ON *.* TO ROLE_DEV_ADMIN; 
+> 
+> # 역할 부여
+> GRANT ROLE_DEV_ADMIN TO '<DB 관리자 아이디>'@'%';
+> ``` 
+> 
+> **애플리케이션**  
+> ```sql
+> # 계정 생성
+> CREATE USER '<애플리케이션 아이디>'@'%' identified by '<password>';
+> 
+> # 역할 생성
+> CREATE ROLE ROLE_APPLICATION;
+>
+> # 권한 부여: 특정 DB 의 CRUD 허용
+> GRANT SELECT, INSERT, UPDATE, DELETE ON <db 명>.* TO ROLE_APPLICATION; 
+> 
+> # 역할 부여
+> GRANT ROLE_APPLICATION TO '<애플리케이션 아이디>'@'%';
+> ```  
+
 ---
 
 ## 엔진
@@ -297,7 +347,7 @@
 > MySQL 엔진이 각 스토리지 엔진에게 데이터를 읽어오가나 저장하도록 명령하려면 반드시 핸들러를 통해야 한다.  
 
 ### 백그라운드 스레드
-> 백그라운드 스레드 중 가장 중요한 것은 로그 스레드와 버퍼의 데이터를 디스크로 내려쓰는 작ㅇ덥을 처리하는 쓰기 스레드(write thread)이다.  
+> 백그라운드 스레드 중 가장 중요한 것은 `로그 스레드`와 버퍼의 데이터를 디스크로 내려쓰는 작업을 처리하는 `쓰기 스레드(write thread)`이다.  
 > InnoDB 의 경우 MySQL 5.5 버전부터 데이터 쓰기 스레드와 데이터 읽기 스레드의 개수를 2개 이상 지정할 수 있다.  
 > `innodb_write_io_threads` 와 `innodb_read_io_threads` 시스템 변수로 스레드의 개수를 설정한다.  
 > 읽기 작업의 경우 주로 클라이언트 스레드(connection 마다 존재)에서 처리되기 때문에 많은 스레드 갯수가 필요하지 않지만 
@@ -310,7 +360,7 @@
 
 ### 실행 엔진과 핸들러
 > **실행 엔진**  
-> 실행 엔진은 만들어진 계획대로 각 핸들러에게 요청해서 받은 결과를 또 다른 핸틀러 요청의 입력으로 연결하는 역할을 수행한다.  
+> 실행 엔진은 만들어진 계획대로 각 핸들러에게 요청해서 받은 결과를 또 다른 핸들러 요청의 입력으로 연결하는 역할을 수행한다.  
 > 
 > **핸들러(스토리지 엔진)**  
 > MySQL 실행 엔진의 요청에 따라 데이터를 디스크로 저장하고 디스크로부터 읽어오는 역할을 담당한다.  
@@ -319,7 +369,7 @@
 > MySQL 8.0 버전으로 오면서 쿼리 캐시의 기능이 사라졌다.  
 
 ### InnoDB 스토리지 엔진 아키텍처
-> InnoDB 는 MySQL 에서 사용할 수 있는 스토리지 엔징 중 거의 유일하게 레코드 기반의 잠금을 제공하며, 그 때문에 높은 동시성 처리가 가능하고 안정적이며 성능이 뛰어나다.    
+> InnoDB 는 MySQL 에서 사용할 수 있는 스토리지 엔진 중 거의 유일하게 레코드 기반의 잠금을 제공하며, 그 때문에 높은 동시성 처리가 가능하고 안정적이며 성능이 뛰어나다.    
 > InnoDB 의 모든 테이블은 기본적으로 프라이머리 키를 기준으로 클러스터링되어 저장된다. 즉, 프라이머리 키 값의 순서대로 디스크에 저장된다는 뜻이며, 모든 세컨더리 인덱스는 
 > 레코드의 주소 대신 프라이머리 키의 값을 논리적인 주소로 사용한다.
 
@@ -329,6 +379,8 @@
 > 하나의 트랜잭션에서 Update 쿼리가 실행되면 InnoDB 버퍼 풀에 있는 레코드가 갱신되며 레코드의 업데이트 이전의 내용은 언두 로그에 기록된다.  
 > 다른 트랜잭션에서 동일 레코드를 조회 시에 READ_UNCOMMITTED 이면 InnoDB 버퍼 풀에 있는 레코드를 읽게 되며 그 외에 
 > READ_COMMITTED, REPEATABLE_READ, SERIALIZABLE 의 경우에는 언두 로그에 기록된 레코드를 읽게 된다.  
+> 
+> *InnoDB 버퍼풀: 조회로 인하여 레코드를 메모리(RAM)에 일정 기간 상주시키고 있는데 이 메모리 공간을 버퍼풀이라고 한다.   
 
 ### 자동 데드락 감지
 > InnoDB 스토리지 엔진은 내부적으로 잠금이 교착 상태에 빠지지 않았는지 체크하기 위해 잠금 대기 목록을 그래프 형태로 관리한다.  
@@ -337,7 +389,8 @@
 > 
 > InnoDB 스토리지 엔진은 상위 레이어인 MySQL 엔진에서 관리되는 테이블 잠금은 볼 수가 없어서 데드락 감지가 불확실할 수 도 있는데, `innodb_table_locks`
 > 시스템 변수를 활성화하면 InnoDB 스토리지 엔진 내부의 레코드 잠금뿐만 아니라 테이블 레벨의 잠금까지 감지할 수 있게 된다. 특별한 이유가 없다면 `innodb_table_locks`
-> 시스템 변수를 활성화하자.
+> 시스템 변수를 활성화하자.  
+> `show variables where variable_name = 'innodb_table_locks'`
 > 
 > 일반적인 서비스에서는 데드락 감지 스레드가 트랜잭션의 잠금 목록을 검사해서 데드락을 찾아내는 작업은 크게 부담되지 않는다.
 > 하지만 동시 처리 스레드가 매우 많아지거나 각 트랜잭션이 가진 잠금의 개수가 많아지면 데드락 감지 스레드가 느려진다. 
@@ -347,6 +400,14 @@
 > 하지만 `innodb_lock_wait_timeout` 시스템 변수를 활성화하면 이런 데드락 상황에서 일정 시간이 지나면 자동으로 요청이 실패하고 에러 메시지를 반환하게 된다.  
 > `innodb_lock_wait_timeout` 은 초 단위로 설정할 수 있으며, `innodb_deadlock_detect` 를 OFF 로 설정해서 비활성화하는 경우라면 `innodb_lock_wait_timeout`을
 > 기본값인 50초보다 훨씬 낮은 시간으로 변경해서 사용할 것을 권장한다.  
+> 
+> ```sql
+> # 데드락 감지 스레드 활성화 상태
+> show variables where variable_name = 'innodb_deadlock_detect';
+> 
+> # 락 대기 타임아웃(초 단위) 설정 조회
+> show variables where variable_name = 'innodb_lock_wait_timeout';
+> ```
 
 ### InnoDB 버퍼풀
 > InnoDB 스토리지 엔진에서 가장 핵심적인 부분으로, 디스크의 데이터 파일이나 인덱스 정보를 메모리에 캐시해 두는 공간이다.  
@@ -356,10 +417,7 @@
 > 그리고 다른 프로그램이 사용할 수 있는 공간으로 확보해주는 것이 좋다.  
 > 전제 메모리 공간이 8GB 이상이라면 InnoDB 버퍼 풀의 크기를 전체 메모리의 50% 에서 시작해서 조금씩 올려가면서 최적점을 찾는다.  
 >
-> 버퍼 풀 크기 확인 쿼리
-> ```sql
-> show variables where variable_name in ('innodb_buffer_pool_size', 'innodb_buffer_pool_instances');
-> ```
+> 버퍼 풀 크기 확인 쿼리: `show variables where variable_name = 'innodb_buffer_pool_size';`
 > 
 > InnoDB 버퍼 풀의 크기는 동적으로 변경할 수 있지만 버퍼 풀의 변경은 크리티컬한 변경이므로 가능하면 MySQL 서버가 한가한 시점을 골라서 진행하는 것이 좋다.  
 > 또한 버퍼 풀을 더 크게 변경하는 작업은 시스템 영향도가 크지 않지만, 버퍼 풀의 크기를 줄이는 작업은 서비스 영향도가 매우 크므로 가능하면 버퍼 풀의 크기를 줄이는 
@@ -369,7 +427,9 @@
 > 버퍼 풀을 여러 개로 쪼개어 관리할 수 있게 개선됐다.  
 > `innodb_buffer_pool_instances` 시스템 변수를 이용해 버퍼 풀을 여러 개로 분리해서 관리할 수 있는데, 각 버퍼 풀을 버퍼 풀 인스턴스라고 표현한다.  
 > 기본적으로 버퍼 풀 인스턴스의 개수는 8개로 초기화되지만 전체 버퍼 풀을 위한 메모리 크기가 1GB 미만이면 버퍼풀 인스턴스는 1개만 생성된다.  
-> 버퍼 풀로 할당할 수 있는 메모리 공간이 40GB 이하 수준이라면 기본 값인 8을 유지하고, 메모리가 크다면 버퍼 풀 인스턴스랑 5GB 정도가 되게 인스턴스 개수를 설정하는 것이 좋다.  
+> 버퍼 풀로 할당할 수 있는 메모리 공간이 40GB 이하 수준이라면 기본 값인 8을 유지하고, 메모리가 크다면 버퍼 풀 인스턴스당 5GB 정도가 되게 인스턴스 개수를 설정하는 것이 좋다.  
+> 
+> 버퍼풀 인스턴스 확인 쿼리: `show variables where variable_name = 'innodb_buffer_pool_instances';`
 
 ### 버퍼 풀과 리두 로그
 > 버퍼 풀은 서버의 성능 향상을 위한 데이터 캐시 및 쓰기가 필요한 레코드들을 모아 한꺼번에 디스크에 적용하는 쓰기 버퍼링 두가지를 제공한다.  
