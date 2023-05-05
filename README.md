@@ -978,4 +978,52 @@
 > ```
 
 ### 함수 기반 인덱스
+> **가상 칼럼을 이용한 인덱스**  
+> 다음과 같이 사용자의 정보를 저장하는 테이블이 있다고 가정해보자.  
+> ```sql
+> CREATE TABLE user (
+>   id BIGINT,
+>   first_name VARCHAR(10),
+>   last_name VARCHAR(10),
+>   PRIMARY KEY (id)
+> );
+> ```
+> first_name 과 last_name 을 합쳐서 검색해야 하는 요건이 생겼다면 MySQL 8.0 이전 버전의 MySQL 서버에서는 
+> full_name 이라는 칼럼을 추가하고 모든 레코드에 대해 full_name 을 업데이트하는 작업을 거쳐야했다.  
+> 그러나 MySQL 8.0 버전부터는 다음과 같이 가상 칼럼을 추가하고 그 가상 칼럼에 인덱스를 생성할 수 있게 됐다.  
+> ```sql
+> ALTER TABLE user
+>   ADD full_name VARCHAR(30) AS (CONCAT(first_name,' ',last_name)) VIRTUAL,
+>   ADD INDEX ix_fullname (full_name);
+> ```
+> 이제부터는 full_name 칼럼에 대한 검색도 새로 만들어진 ix_fullname 인덱스를 이용해 실행 계획이 만들어지는 것을 확인할 수 있다.  
+> ```sql
+> EXPLAIN SELECT * FROM user WHERE full_name = 'Matt Lee';
+> ```
+> 가상 칼럼은 테이블에 새로운 칼럼을 추가하는 것과 같은 효과를 내기 때문에 실제 테이블의 구조가 변경된다는 단점이 있다.  
+> 
+> **함수를 이용한 인덱스**  
+> MySQL 8.0 버전부터는 다음과 같이 함수를 직접 사용하는 인덱스를 생성할 수 있게 됐다.
+> ```sql
+> CREATE TABLE user (
+>   id BIGINT,
+>   first_name VARCHAR(10),
+>   last_name VARCHAR(10),
+>   PRIMARY KEY (id),
+>   INDEX ix_fullname (CONCAT(first_name,' ',last_name))
+> );
+> ```
+> 함수를 직접 사용하는 인덱스는 테이블의 구조는 변경하지 않고, 계산된 결괏값의 검색을 빠르게 만들어준다. 
+> 함수 기반 인덱스를 제대로 활용하려면 반드시 조건절에 함수 기반 인덱스에 명시된 표현식이 그대로 사용돼야 한다. 
+> 함수 생성 시 명시된 표현식과 쿼리의 WHERE 조건절에 사용된 표현식이 다르다면 MySQL 옵티마이저는 다른 표현식으로 간주해서 함수 기반 인덱스를 사용하지 못한다. 
+> ```sql
+> EXPLAIN SELECT * FROM user WHERE CONCAT(first_name,' ',last_name) = 'Matt Lee';
+> ```
+> 만약 옵티마이저가 표시하는 실행 계획이 'ix_fullname' 인덱스를 사용하지 않는 것으로 표시된다면 CONCAT 함수에 사용된 공백 문자 리터럴 때문일 가능성이 높다.
+> 이 경우 다음 3개 시스템 변수의 값을 동일 콜레이션으로 일치시킨 후, 다시 테스트를 수행한다.  
+> ```sql
+> SHOW VARIABLES WHERE variable_name in ('collation_connection', 'collation_database', 'collation_server');
+> ```
+
+### 멀티 밸류 인덱스
 > 
