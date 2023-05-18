@@ -1286,7 +1286,60 @@
 > group by 가 인덱스를 통해 처리되는 쿼리는 이미 정렬된 인덱스를 읽는 것이므로 쿼리 실행 시점에 추가적인 정렬 작업이나 내부 임시 테이블은 필요하지 않다.  
 > 
 > 루스 인덱스 스캔을 이용하는 group by  
+> 루스(Loose) 인덱스 스캔 방식은 인덱스의 레코드를 건너뛰면서 필요한 부분만 읽어서 가져오는 것을 의미하는데, 옵티마니저가 루스 인덱스 스캔을 사용할 때는 실행 계획의
+> Extra 칼럼에 "Using index for group-by" 코멘트가 표시된다.  
 > 
+> ```sql
+> explain 
+> select emp_no
+> from salary
+> where from_date = '1985-03-01'
+> group by emp_no;
+> ```
+> salary 테이블의 인덱스는 (emp_no, from_date) 로 생성돼 있으므로 위의 쿼리 문장에서 where 조건은 인덱스 레인지 스캔 접근 방식으로 이용할 수 없는 쿼리이다.
+> 하지만 이 쿼리의 실행 계획은 인덱스 레인지 스캔(range type)을 이용했으며, Extra 칼럼의 메시지를 보면 group by 처리까지 인덱스를 사용했다는 것을 알 수 있다.  
+> 
+> 임시 테이블을 사용하는 group by  
+> group by 의 기준 칼럼이 드라이빙 테이블에 있든 드리븐 테이블에 있든 관계없이 인덱스를 전혀 사용하지 못할 때는 이 방식으로 처리된다.
+> 임시 테이블을 사용하는 group by 쿼리에 explain 를 붙여 실행하면 실행 계획에서 Extra 칼럼에 "Using temporary" 메시지가 표시된다.  
+> 
+> MySQL 5.7 버전까지는 group by 가 사용되면 자동으로 그루핑 칼럼을 기준으로 정렬이 수행됐는데, 정렬이 필요치 않은 경우라면 "order by null" 을 추가로
+> 사용할 것을 권장했다. 불필요한 추가 정렬 작업을 수행하지 않으므로 크진 않지만 성능 향상을 볼 수 있었기 때문이다.  
+> 하지만 MySQL 8.0 버전 부터는 group by 를 사용하더라도 묵시적인 정렬이 수행되지 않기 때문에 정렬된 겨로가가 필요치 않은 경우 굳이 "order by null" 구문을 
+> 추가하지 않아도 된다.  
+> 
+> **Distinct 처리**  
+> 집합 함수(MIN, MAX, COUNT 등)와 같이 distinct 가 사용되는 쿼리의 실행 계획에서 distinct 처리가 인덱스를 사용하지 못할 때는 항상 임시 테이블이 필요하다.  
+> 하지만 실행 계획의 Extra 칼럼에는 "Using temporary" 메시지가 출력되지 않는다.  
+> 
+> distinct 를 사용할 때 자주 실수하는 것이 있다. distinct 는 select 하는 레코드(튜플)를 유니크하게 select 하는 것이지, 특정 칼럼만 유니크하게 조회하는 것이 아니다.  
+> 즉, 다음 쿼리에서 select 하는 결과는 first_name 만 유니크한 것을 가져오는 것이 아니라 (first_name, last_name) 조합 전체가 유니크한 레코드를 가져오는 것이다.  
+> ```sql
+> select distinct first_name, last_name from employees;
+> ```
+> 가끔 distinct 를 다음과 같이 함수처럼 사용하는 사람도 있는데 실제로 MySQL 서버는 distinct 두의 괄호를 그냥 의미 없이 사용된 괄호로 해석하고 제거해 버린다.  
+> 
+> ```sql
+> explain
+> select count(distinct s.salary)
+> from employee e, salary s
+> where e.emp_no = s.emp_no
+> and e.emp_no between 10001 and 10100;
+> ```
+> 위의 쿼리처럼 집합 함수 내에서 distinct 키워드가 사용될 수 있는데, 이경우에는 일반적으로 `select distinct` 와 다른 형태로 해석된다.  
+> 집합 함수가 없는 select 쿼리에서 distinct 는 조회하는 모든 칼럼의 조합이 유니크한 것들만 가져온다.  
+> 하지만 집합 함수 내에서 사용된 distinct 는 그 집합 함수의 인자로 전달된 칼럼값이 유니크한 것들을 가져온다.    
+> distinct 처리를 위해 인덱스를 이용할 수 없는 경우에는 임시 테이블이 필요하다.  
+> 인덱스된 칼럼에 distinct 처리를 수행할 때는 인덱스를 풀 스캔하거나 레인지 스캔하면서 임시 테이블 없이 최저고하된 처리를 수행할 수 있다.  
+> 
+> **내부 임시 테이블 활용**  
+> MySQL 엔진이 스토리지 엔진으로부터 받아온 레코드를 정렬하거나 그루핑할 때는 내부적인 임시 테이블(Internal temporary table)을 사용한다.  
+> MySQL 엔진이 내부적인 가공을 위해 생성하는 임시 테이블은 다른 세션이나 다른 쿼리에서는 볼 수 없으며 사용하는 것도 불가능하다.  
+> 사용자가 생성한 임시 테이블(CREATE TEMPORARY TABLE) 과는 달리 내부적인 임시 테이블은 쿼리의 처리가 완료되면 자동으로 삭제된다.  
+> 
+> 임시 테이블이 최대한 사용 가능한 메모리 공간의 크기는 `temptable_max_ram` 시스템 변수로 제어할 수 있는데, 기본값은 1GB로 설정돼 있다.
+> 임시 테이블의 크기가 1GB 보다 커지는 경우 MySQL 서버는 메모리의 임시 테이블을 디스크로 기록하게 된다.
 
-
+### 고급 최적화
+> 
  
