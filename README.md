@@ -1422,7 +1422,21 @@
 
 ## 실행 계획
 ### 통계 정보
-> TODO
+> 비용 기반 최적화에서 가장 중요한 것은 통계 정보다. 통계 정보가 정확하지 않다면 전혀 엉뚱한 방향으로 쿼리를 실행할 수 있기 때문이다.  
+> MySQL 5.6 버전부터는 각 테이블의 통계 정보를 mysql 데이터베이스의 `innodb_index_stats` 테이블과 `innodb_table_stats` 테이블로 관리할 수 있게 개선됐다.
+> 다음과 같은 이벤트가 발생하면 자동으로 통계 정보가 갱신된다.  
+> * 테이블이 새로 오픈되는 경우  
+> * 테이블의 레코드가 대량으로 변경되는 경우(테이블의 전체 레코드 중에서 1/16 정도의 UPDATE 또는 INSERT 나 DELETE 가 실행되는 경우)  
+> * `ANALYZE TABLE` 명령이 실행되는 경우  
+> * `SHOW TABLE STATUS` 명령이나 `SHOW INDEX FROM` 명령이 실행되는 경우  
+> * InnoDB 모니터가 활성화되는 경우  
+> * `innodb_stats_on_metadata` 시스템 설정이 ON 인 상태에서 `SHOW TABLE STATUS` 명령이 실행되는 경우  
+> `innodb_stats_auto_recalc` 시스템 설정 변수의 값을 OFF 로 설정해서 통계 정보가 자동으로 갱신되는 것을 막을 수 있다. (기본값은 ON 이다)  
+> 
+> 히스토그램(Histogram)  
+> MySQL 8.0 버전부터 인덱스되지 않은 칼럼들에 대해서도 데이터 분포도를 수집해서 저장하는 정보.  
+> 자동으로 수집되지 않고 `ANALYZE TABLE ... UPDATE HISTOGRAM` 명령을 실행해 수동으로 수집 및 관리된다.  
+> information_schema 데이터베이스의 `column_statistics` 테이블을 통해서 현재 히스토그램 정보를 조회할 수 있다.  
 
 ### 실행 계획 확인
 > TODO
