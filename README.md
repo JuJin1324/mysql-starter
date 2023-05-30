@@ -1621,6 +1621,114 @@
 > 레코드 건수를 예측하여 표시 후 filtered 칼럼에는 rows 에 표시된 숫자 중 인덱스가 걸리지 않은 칼럼으로 필터링 후 남은 레코드의 비율이 얼마인지 표시한다.  
 > 
 > **Extra 칼럼**  
+> `const row not found`: 쿼리의 실행 계획에서 const 접근 방법으로 테이블을 읽었지만 실제로 해당 테이블에 레코드가 1건도 존재하지 않으면 
+> Extra 칼럼에 이 내용이 표시된다.  
+> 
+> `Deleting all rows`: where 조건 없이 delete 문을 실행했을 때 표시된다. MySQL 8.0 버전에서는 InnoDB 스토리지 엔진과 MyISAM 엔진 모두
+> 더 이상 실행 계획에 해당 최적화는 표시되지 않는다. 테이블의 모든 레코드를 삭제하고자 한다면 where 조건절이 없는 delete 보다 `truncate table` 명령을
+> 사용할 것을 권장한다.
+> 
+> `Distinct`: 쿼리의 distinct 를 처리하기 위해 조인하지 않아도 되는 항목은 모두 무시하고 꼭 필요한 것만 조인했을 때 표시된다.  
+> 
+> `Full scan on NULL key`: "col1 in (select col2 from ...)" 과 같은 조건을 가진 쿼리에서 자주 발생할 수 있는데, 
+> col1 의 값이 NULL 이 된다면 결과적으로 조건은 "NULL in (select col2 from ...)" 과 같이 바뀐다. 
+> SQL 표준에서는 NULL 을 "알수 없는 값"으로 정의하고 있기 때문에 다음과 같이 비교된다.  
+> * 서브쿼리가 1건이라도 결과 레코드를 가진다면 최종 비교 결과는 NULL
+> * 서브쿼리가 1건도 결과 레코드를 가지지 않는다면 최종 비교 결과는 FALSE   
+> 
+> 이 비교 과정에서 col1 이 NULL 이면 서브쿼리에 사용된 테이블에 대해서 풀 테이블 스캔을 해야만 결과를 알아낼 수 있다. 해당 내용은
+> MySQL 서버가 쿼리를 실행하는 중 col1 이 NULL 을 만나면 차선책으로 서브쿼리 테이블에 대해서 풀 테이블 스캔을 사용할 것이라는 사실을 알려주는
+> 키워드이다.
+> 
+> "col1 in (select col2 from ...)" 쿼리에 인덱스 풀 스캔을 발생시키지 않으려면 앞에 "col1 is not null" 조건을 붙여서
+> col1 이 NULL 인 경우는 미리 방지하는 것이다.  
+> 
+> `Impossible HAVING`: having 절의 조건을 만족하는 레코드가 없을 때 실행 게획읜 Extra 칼럼에는 "Impossible HAVING" 키워드가 표시된다.
+> 실행 계획의 Extra 칼럼에 해당 메시지가 출력된다면 쿼리가 제대로 작성되지 못한 경우가 대부분이므로 쿼리의 내용을 다시 점검하는 것이 좋다.
+> 
+> `Impossible WHERE`: where 조건이 항상 false 가 될 수 밖에 없는 경우 표시된다.
+> 
+> `No matching min/max row`: MIN() 이나 MAX() 와 같은 집합 함수가 있는 쿼리의 조건절에 일치하는 레코드가 한 건도 없을 때는 Extra 칼럼에
+> 해당 메시지가 출력된다. 그리고 MIN() 이나 MAX() 의 결과로 NULL 이 반환된다.  
+> Extra 칼럼에 Impossible HAVING 혹은 WHERE 나 Not matching ... 등의 메시지가 표시된다고 해서 실제 쿼리가 문법적으로 오류가 있는 것은 아니다.
+> 다만 쿼리 처리를 위한 데이터가 없다는 의미이므로 혹시 쿼리가 비즈니스적으로 잘못된 것인지 확인해볼 필요는 있다.  
+> 
+> `no matching row in const table`: 조인에 사용된 테이블에서 const 방법으로 접근할 때 일치하는 레코드가 없다면 해당 메시지가 표시된다.
+> 
+> `No matching rows after partition pruning`: 파티션된 테이블에 대한 UPDATE 또는 DELETE 명령의 실행 계획에서 표시될 수 있는데, 
+> 해당 파티션에서 UPDATE 하거나 DELETE 할 대상 레코드가 없을 때 표시된다. 이 메시지는 단순히 삭제할 레코드가 없음을 의미하는 것이 아니라 
+> 대상 파티션이 없다는 것을 의미한다. 그래서 삭제할 레코드가 없지만 대상 파티션은 있는 경우에는 해당 메시지가 표시되지 않는다.
+> 
+> `No tables used`: from 절이 없는 쿼리 문장이나 "from dual" 형태의 쿼리 실행 계획에서 표시된다. 다른 DBMS 와 달리 MySQL 서버는 from 절이
+> 없는 쿼리도 허용된다.
+> 
+> `Not exists`: 프로그램을 개발하다 보면 A 테이블에는 존재하지만 B 테이블에는 없는 값을 조회해야 하는 쿼리가 자주 사용된다.
+> 이럴 때는 주로 not in(subquery) 형태나 not exists 연산자를 주로 사용한다. 이러한 형태의 조인을 안티-조인(Anti-Join)이라고 한다. 
+> 똑같은 처리를 아우터 조인(left outer join)을 이용해서도 구현할 수 있다. 일반적으로 not in (subquery) 나 not exists 등의 연산자를 사용하는
+> 안티-조인으로 처리해야 하지만 레코드의 건수가 많을 때는 아우터 조인을 이용하면 빠른 성능을 낼 수 있다.   
+> ```sql
+> EXPLAIN
+> select * 
+> from dept_emp de left join department d on de.dept_no = d.dept_no
+> where d.dept_no is null;
+> ```
+> department 의 dept_no 가 null 인 조건을 함으로써 dept_emp 에는 있고 dept_no 에는 없는 값만 조회한다.  
+> 이렇게 아우터 조인을 이용해 안티-조인을 수행하는 쿼리에서는 실행 계획의 Extra 칼럼에 해당 메시지가 표시된다.  
+> "Not exists" 메시지는 옵티마이저가 dept_emp 테이블의 레코드를 이용해 department 테이블을 조인할 때 department 테이블의 레코드가 
+> 존재하는지 아닌지만 판단하는 것을 의미한다. 즉, department 테이블에 조인 조건에 일치하는 케로드가 여러 건이 있다고 하더라도 딱 1건만 조회해보고 처리를
+> 완료하는 최적화를 의미한다.  
+> 
+> `Plan isn't ready yet`: 
 > 
 > 
+> `Range checked for each record(index map:N)`: 
+> 
+> 
+> `Recursive`: 
+> 
+> 
+> `Rematerialize`: 
+> 
+> 
+> `Select tables optimized away`: 
+> 
+> 
+> `Start temporary, End temporary`: 
+> 
+> 
+> `unique row not found`: 
+> 
+> 
+> `Using filesort`: 
+> 
+> 
+> `Using index`: 
+> TODO: 여기까지
+> 
+> `Using index condition`: 
+> 
+> 
+> `Using index for group-by`: 
+> 
+> 
+> `Using index for skip scan`: 
+> 
+> 
+> `Using join buffer(Block nested Loop), Using join buffer(Batched Key Access), Using join buffer(hash join)`: 
+> 
+> 
+> `Using MRR`: 
+> 
+> 
+> `Using sort_union(...), Using union(...), Using intersect(...)`: 
+> 
+> 
+> `Using temporary`: 
+> 
+> 
+> `Using where`: 
+> 
+> 
+> `Zero limit`:
+> TODO: 여기까지
 
