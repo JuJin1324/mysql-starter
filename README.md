@@ -1678,32 +1678,29 @@
 > 존재하는지 아닌지만 판단하는 것을 의미한다. 즉, department 테이블에 조인 조건에 일치하는 케로드가 여러 건이 있다고 하더라도 딱 1건만 조회해보고 처리를
 > 완료하는 최적화를 의미한다.  
 > 
-> `Plan isn't ready yet`: 
+> `Range checked for each record(index map:N)`: 레코드마다 인덱스 레인지 스캔을 체크한다.
 > 
+> `Rematerialize`: MySQL 8.0 버전부터는 래터럴 조인(LATERAL JOIN) 기능이 추가됐는데, 이 경우 래터럴로 조인되는 테이블은
+> 선행 테이블의 레코드별로 서브쿼리를 실행해서 그 결과를 임시 테이블에 저장한다. 이 과정을 "Rematerializing" 이라고 한다.
 > 
-> `Range checked for each record(index map:N)`: 
+> `Select tables optimized away`: MIN() 또는 MAX() 만 SELECT 절에 사용되거나 GROUP BY 로 MIN(), MAX() 를 조회하는 쿼리가 인ㄷ게스를
+> 오름차순 또는 내림차순으로 1건만 읽는 형태의 최적화가 적용된다면, Extra 칼럼에 "Select tables optimized away" 가 표시된다.   
 > 
+> `Start temporary, End temporary`: 불필요한 중복 건을 제거하기 위해서 내무 임시 테이블을 사용하는데, 이때 조인되어 내부 임시 테이블에 
+> 저장되는 테이블을 식별할 수 있게 조인의 첫 번째 테이블에 "Start temporary" 문구를 보여주고 조인이 끝나는 부분에 "End temporary" 문구를 표시해준다.
 > 
-> `Recursive`: 
+> `unique row not found`: 두 개의 테이블이 각각 유니크(프라이머리 키 포함) 칼럼으로 아우터 조인을 수행하는 쿼리에서 아우터 테이블에 일치하는 레코드가
+> 존재하지 않을 때 Extra 칼럼에 이 코멘트가 표시된다.
 > 
+> `Using filesort`: order by 를 처리하기 위해 인덱스를 이용할 수도 있지만 적절한 인덱스를 사용하지 못할 때는 MySQL 서버가 조회된 레코드를 다시 한번
+> 정렬해야 한다. order by 처리가 인덱스를 사용하지 못할 때만 실행 계획의 Extra 칼럼에 "Using filesort" 코멘트가 표시되며, 이는 조회된 레코드를
+> 정렬용 메모리 버퍼에 복사해 퀵 소트 또는 힙 소트 알고리즘을 이용해 정렬을 수행하게 된다는 의미다. "Using filesort" 코멘트는 order by 가
+> 사용된 쿼리의 실행 계획에서만 나타날 수 있다.  
+> "Using filesort" 가 출력되는 쿼리는 많은 부하를 일으키므로 가능하다면 쿼리를 튜닝하거나 인덱스를 생성하는 것이 좋다.  
 > 
-> `Rematerialize`: 
-> 
-> 
-> `Select tables optimized away`: 
-> 
-> 
-> `Start temporary, End temporary`: 
-> 
-> 
-> `unique row not found`: 
-> 
-> 
-> `Using filesort`: 
-> 
-> 
-> `Using index`: 
-> TODO: 여기까지
+> `Using index(커버링 인덱스)`: 데이터 파일을 전혀 읽지 않고 인덱스만 읽어서 쿼리를 모두 처리할 수 있을 때 표시된다. 
+> 이렇게 데이터 파일을 읽지 않고 인덱스만으로 처리되는 것을 커버링 인덱스라고 한다. 인덱스 레인지 스캔을 사용하지만 쿼리의 성능이 만족스럽지 못한 경우라면
+> 인덱스에 있는 칼럼만 사용하도록 쿼리를 변경해 큰 성능 향상을 볼 수 있다.  
 > 
 > `Using index condition`: 
 > 
