@@ -216,8 +216,8 @@
 > 3.계정별 권한 조회: `SHOW GRANTS FOR '<username>'@'<host>';`      
 > 참고. 계정 조회: `select user, host from mysql.user;`  
 >
-> 4.모든 권한 삭제: `REVOKE ALL ON <DB 명>.<테이블 명> FROM <username>`  
-> 4-1.업데이트 권한 삭제: `REVOKE UPDATE ON <DB 명>.<테이블 명> FROM <username>`
+> 4.모든 권한 삭제: `REVOKE ALL ON <DB 명>.<테이블 명> FROM '<username>'@'<host>';`  
+> 4-1.업데이트 권한 삭제: `REVOKE UPDATE ON <DB 명>.<테이블 명> FROM '<username>'@'<host>';`
 
 ### 역할(Role)
 > MySQL 8.0 부터 권한들을 묶은 역할을 생성할 수 있다.  
@@ -226,7 +226,7 @@
 > ```sql
 > CREATE ROLE <role 이름>, <role 이름>, ...;
 > ```
-> 역할 생성 시 뒤에 %'<hostname>' 붙여서 역할을 생성할 수도 있는데 사실 역할의 정체는 로그인 정보가 없는 계정이기 때문이다.  
+> 역할 생성 시 뒤에 `%'<hostname>'` 붙여서 역할을 생성할 수도 있는데 사실 역할의 정체는 로그인 정보가 없는 계정이기 때문이다.  
 > 역할에 로그인 정보를 주어서 로그인이 가능해지는 경우 hostname 이 의미를 가지며 단순히 역할로 사용할 때는 hostname 의 의미가 없다.  
 > 그래서 역할 생성 시 hostname 을 주지 않으며, hostname 을 주지 않으면 hostname 이 '%' 로 자동으로 붙여진다.   
 >
@@ -249,7 +249,7 @@
 > # 예시 2: reader 역할 권한만 부여
 > GRANT role_application_reader TO 'app_reader'@'%';
 > ```
-> 
+>
 > **역할 목록 확인**  
 > 역할은 회원과 동일하게 취급되기 때문에 mysql.user 테이블에 존재한다.  
 > 다만 회원과 다른 점은 역할은 대부분 host 가 '%' 로 되어있으며(회원처럼 % 가 아닌 다른 host 를 설정할 수 있긴 하다.) 역할을 통해서는 로그인할 수 없기 때문에
